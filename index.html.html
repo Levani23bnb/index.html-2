@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArcGen NFT Mint</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #1e293b;
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            width: 380px;
+            text-align: center;
+            border: 1px solid #334155;
+        }
+        h1 { margin-bottom: 0.5rem; color: #38bdf8; }
+        p.subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 2rem; }
+        
+        .stats {
+            background-color: #334155;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #e2e8f0;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 10px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-connect { background-color: #3b82f6; color: white; }
+        .btn-connect:hover { background-color: #2563eb; transform: translateY(-2px); }
+
+        .btn-mint { background-color: #0ea5e9; color: white; }
+        .btn-mint:hover { background-color: #0284c7; transform: translateY(-2px); }
+        .btn-mint:disabled { background-color: #475569; cursor: not-allowed; transform: none; }
+
+        .status { margin-top: 20px; font-size: 0.85em; color: #94a3b8; min-height: 20px; }
+        
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>ArcGen NFT</h1>
+    <p class="subtitle">Mint your exclusive NFT on ARC Testnet</p>
+    
+    <div class="stats">
+        Minted: <span id="mintedCount">...</span> / 1000
+    </div>
+
+    <!-- დაკავშირების ღილაკი -->
+    <button id="connectBtn" class="btn-connect" onclick="connectWallet()">Connect Wallet</button>
+    <p id="walletAddress" style="font-size: 0.8em; color: #64748b; margin-top: 10px; word-break: break-all;"></p>
+
+    <!-- მინთის ღილაკი (თავიდან დამალულია) -->
+    <div id="mintSection" style="display: none;">
+        <button id="mintBtn" class="btn-mint" onclick="mintNFT()">Mint NFT 🚀</button>
+    </div>
+
+    <div id="status" class="status"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+
+<script>
+    // --- შენი კონტრაქტის მისამართი ---
+    const CONTRACT_ADDRESS = "0x729225b555152376016f826f1Dd64299F2D3D650"; 
+    
+    // ABI: მხოლოდ ის ფუნქციები, რაც გვჭირდება (mintNFT და totalMinted)
+    const ABI = [
+        "function mintNFT() external returns (uint256)",
+        "function totalMinted() external view returns (uint256)"
+    ];
+
+    let provider;
+    let signer;
+    let contract;
+
+    async function connectWallet() {
+        const statusEl = document.getElementById("status");
+        
+        if (typeof window.ethereum !== "undefined") {
+            try {
+                await window.ethereum.request({ method: "eth_requestAccounts" });
+                
+                provider = new ethers.BrowserProvider(window.ethereum);
+                signer = await provider.getSigner();
+                const address = await signer.getAddress();
+
+                // ინტერფეისის განახლება
+                document.getElementById("connectBtn").style.display = "none"; // ღილაკს ვმალავთ
+                document.getElementById("walletAddress").innerText = "Connected: " + address.slice(0,6) + "..." + address.slice(-4);
+                document.getElementById("mintSection").style.display = "block"; // მინთს ვაჩენთ
+                
+                contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+                
+                // ინფორმაციის წამოღება (რამდენია დამინთული)
+                updateStats();
+
+                statusEl.innerText = "";
+
+            } catch (error) {
+                console.error(error);
+                statusEl.innerText = "დაკავშირება ვერ მოხერხდა";
+            }
+        } else {
+            statusEl.innerText = "გთხოვთ დააყენოთ Metamask!";
+        }
+    }
+
+    async function updateStats() {
+        try {
+            // totalMinted-ის გამოძახება
+            const count = await contract.totalMinted();
+            document.getElementById("mintedCount").innerText = count.toString();
+        } catch (error) {
+            console.error("Stats error:", error);
+            document.getElementById("mintedCount").innerText = "?";
+        }
+    }
+
+    async function mintNFT() {
+        const btn = document.getElementById("mintBtn");
+        const statusEl = document.getElementById("status");
+
+        try {
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loader"></div> Processing...';
+            statusEl.innerText = "დაადასტურეთ ტრანზაქცია საფულეში...";
+
+            // მინთის ფუნქციის გამოძახება (უფასოა, value არ სჭირდება)
+            const tx = await contract.mintNFT();
+            
+            statusEl.innerText = "იგზავნება... გთხოვთ დაელოდოთ confirmation-ს";
+            
+            // დალოდება
+            await tx.wait();
+
+            statusEl.innerText = "✅ წარმატებით დაიმინთა!";
+            statusEl.style.color = "#4ade80";
+            
+            // განვაახლოთ რაოდენობა
+            updateStats();
+
+        } catch (error) {
+            console.error(error);
+            // ერორის დამუშავება
+            let msg = error.reason || error.message;
+            if (msg.includes("user rejected")) msg = "User rejected transaction";
+            
+            statusEl.innerText = "❌ შეცდომა: " + msg;
+            statusEl.style.color = "#f87171";
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Mint NFT 🚀";
+        }
+    }
+</script>
+
+</body>
+</html>
